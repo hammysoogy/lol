@@ -1969,7 +1969,7 @@ run(function()
 	end
 	
 	HitBoxes = vape.Categories.Blatant:CreateModule({
-		Name = 'HitBoxes',
+		Name = 'expmadd',
 		Function = function(callback)
 			if callback then
 				if Mode.Value == 'Sword' then
@@ -2009,13 +2009,13 @@ run(function()
 				HitBoxes:Toggle()
 			end
 		end,
-		Tooltip = 'Sword - Increases the range around you to hit entities\nPlayer - Increases the players hitbox'
+		Tooltip = 'dddd - Increases the range around you to hit entities\nPlayer - Increases the players hitbox'
 	})
 	Expand = HitBoxes:CreateSlider({
 		Name = 'Expand amount',
 		Min = 0,
-		Max = 14.4,
-		Default = 14.4,
+		Max = 155.4,
+		Default = 155.4,
 		Decimal = 10,
 		Function = function(val)
 			if HitBoxes.Enabled then
@@ -2036,7 +2036,7 @@ end)
 	
 run(function()
 	vape.Categories.Blatant:CreateModule({
-		Name = 'KeepSprint',
+		Name = 'eufjieof',
 		Function = function(callback)
 			debug.setconstant(bedwars.SprintController.startSprinting, 5, callback and 'blockSprinting' or 'blockSprint')
 			bedwars.SprintController:stopSprinting()
