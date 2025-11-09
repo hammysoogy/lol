@@ -3942,6 +3942,30 @@ run(function()
 	})
 end)
 	
+
+run(function()
+    local Snaappy
+
+    Snaappy = vape.Categories.Utility:CreateModule({
+        Name = 'Snaappy',
+        Function = function(callback)
+            if callback then
+                task.spawn(function()
+                    while Snaappy.Enabled do
+                        local char = lplr.Character
+                        if char and char:FindFirstChild("HumanoidRootPart") then
+                            local hrp = char.HumanoidRootPart
+                            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(15), 0)
+                        end
+                        task.wait(0.05)
+                    end
+                end)
+            end
+        end,
+        Tooltip = 'Spin spin spin like Snaappy!'
+    })
+end)
+
 run(function()
 	local AutoBalloon
 	
