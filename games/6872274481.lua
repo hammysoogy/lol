@@ -5506,7 +5506,7 @@ run(function()
 	})
 	Open = ChestSteal:CreateToggle({Name = 'GUI Check'})
 	Skywars = ChestSteal:CreateToggle({
-		Name = 'Only Skywars',
+		Name = 'Only GEEGEGEGEGEGE',
 		Function = function()
 			if ChestSteal.Enabled then
 				ChestSteal:Toggle()
