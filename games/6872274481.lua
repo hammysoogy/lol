@@ -1199,7 +1199,7 @@ for _, v in {'AntiRagdoll', 'TriggerBot', 'SilentAim', 'AutoRejoin', 'Rejoin', '
 	vape:Remove(v)
 end
 run(function()
-	local aimlol
+	local AimAssist
 	local Targets
 	local Sort
 	local AimSpeed
@@ -1210,7 +1210,7 @@ run(function()
 	local ClickAim
 	
 	AimAssist = vape.Categories.Combat:CreateModule({
-		Name = 'aimlol',
+		Name = 'AimAssist',
 		Function = function(callback)
 			if callback then
 				AimAssist:Clean(runService.Heartbeat:Connect(function(dt)
@@ -1236,7 +1236,7 @@ run(function()
 				end))
 			end
 		end,
-		Tooltip = 'works like aim assit.'
+		Tooltip = 'Smoothly aims to closest valid target with sword'
 	})
 	Targets = AimAssist:CreateTargets({
 		Players = true,
@@ -4458,7 +4458,29 @@ run(function()
 		Tooltip = 'Chooses a random mode'
 	})
 end)
+	run(function()
+	vape.Categories.World:CreateModule({
+		Name = 'antihit',
+		Function = function(callback)
+			if callback then
+				for _, v in getconnections(lplr.Idled) do
+					v:Disconnect()
+				end
 	
+				for _, v in getconnections(runService.Heartbeat) do
+					if type(v.Function) == 'function' and table.find(debug.getconstants(v.Function), remotes.AfkStatus) then
+						v:Disconnect()
+					end
+				end
+	
+				bedwars.Client:Get(remotes.AfkStatus):SendToServer({
+					afk = false
+				})
+			end
+		end,
+		Tooltip = 'ssss'
+	})
+end)
 run(function()
 	local shooting, old = false
 	
