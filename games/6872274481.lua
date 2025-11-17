@@ -1,3 +1,4 @@
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
 	func()
 end
@@ -1283,60 +1284,6 @@ run(function()
 	StrafeIncrease = AimAssist:CreateToggle({Name = 'Strafe increase'})
 end)
 	
-run(function()
-	local old
-	
-	AutoCharge = vape.Categories.Combat:CreateModule({
-	    Name = 'AutoCharge',
-	    Function = function(callback)
-	        debug.setconstant(bedwars.SwordController.attackEntity, 58, callback and 'damage' or 'multiHitCheckDurationSec')
-	        if callback then
-	            local chargeSwingTime = 0
-	            local canSwing
-	
-	            old = bedwars.SwordController.sendServerRequest
-	            bedwars.SwordController.sendServerRequest = function(self, ...)
-	                if (os.clock() - chargeSwingTime) < AutoChargeTime.Value then return end
-	                self.lastSwingServerTimeDelta = 0.5
-	                chargeSwingTime = os.clock()
-	                canSwing = true
-	
-	                local item = self:getHandItem()
-	                if item and item.tool then
-	                    self:playSwordEffect(bedwars.ItemMeta[item.tool.Name], false)
-	                end
-	
-	                return old(self, ...)
-	            end
-	
-	            oldSwing = bedwars.SwordController.playSwordEffect
-	            bedwars.SwordController.playSwordEffect = function(...)
-	                if not canSwing then return end
-	                canSwing = false
-	                return oldSwing(...)
-	            end
-	        else
-	            if old then
-	                bedwars.SwordController.sendServerRequest = old
-	                old = nil
-	            end
-	
-	            if oldSwing then
-	                bedwars.SwordController.playSwordEffect = oldSwing
-	                oldSwing = nil
-	            end
-	        end
-	    end,
-	    Tooltip = 'Allows you to get charged hits while spam clicking.'
-	})
-	AutoChargeTime = AutoCharge:CreateSlider({
-	    Name = 'Charge Time',
-	    Min = 0,
-	    Max = 0.5,
-	    Default = 0.4,
-	    Decimal = 100
-	})
-end)
 	
 run(function()
 	local AutoClicker
@@ -1433,25 +1380,6 @@ run(function()
 	})
 end)
 	
-run(function()
-	local old
-	
-	vape.Categories.Combat:CreateModule({
-		Name = 'NoClickDelay',
-		Function = function(callback)
-			if callback then
-				old = bedwars.SwordController.isClickingTooFast
-				bedwars.SwordController.isClickingTooFast = function(self)
-					self.lastSwing = os.clock()
-					return false
-				end
-			else
-				bedwars.SwordController.isClickingTooFast = old
-			end
-		end,
-		Tooltip = 'Remove the CPS cap'
-	})
-end)
 	
 run(function()
 	local Value
@@ -1630,144 +1558,6 @@ run(function()
 	TargetCheck = Velocity:CreateToggle({Name = 'Only when targeting'})
 end)
 	
-local AntiFallDirection
-run(function()
-	local AntiFall
-	local Mode
-	local Material
-	local Color
-	local rayCheck = RaycastParams.new()
-	rayCheck.RespectCanCollide = true
-
-	local function getLowGround()
-		local mag = math.huge
-		for _, pos in bedwars.BlockController:getStore():getAllBlockPositions() do
-			pos = pos * 3
-			if pos.Y < mag and not getPlacedBlock(pos + Vector3.new(0, 3, 0)) then
-				mag = pos.Y
-			end
-		end
-		return mag
-	end
-
-	AntiFall = vape.Categories.Blatant:CreateModule({
-		Name = 'AntiFall',
-		Function = function(callback)
-			if callback then
-				repeat task.wait() until store.matchState ~= 0 or (not AntiFall.Enabled)
-				if not AntiFall.Enabled then return end
-
-				local pos, debounce = getLowGround(), tick()
-				if pos ~= math.huge then
-					AntiFallPart = Instance.new('Part')
-					AntiFallPart.Size = Vector3.new(10000, 1, 10000)
-					AntiFallPart.Transparency = 1 - Color.Opacity
-					AntiFallPart.Material = Enum.Material[Material.Value]
-					AntiFallPart.Color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-					AntiFallPart.Position = Vector3.new(0, pos - 2, 0)
-					AntiFallPart.CanCollide = Mode.Value == 'Collide'
-					AntiFallPart.Anchored = true
-					AntiFallPart.CanQuery = false
-					AntiFallPart.Parent = workspace
-					AntiFall:Clean(AntiFallPart)
-					AntiFall:Clean(AntiFallPart.Touched:Connect(function(touched)
-						if touched.Parent == lplr.Character and entitylib.isAlive and debounce < tick() then
-							debounce = tick() + 0.1
-							if Mode.Value == 'Normal' then
-								local top = getNearGround()
-								if top then
-									local lastTeleport = lplr:GetAttribute('LastTeleported')
-									local connection
-									connection = runService.PreSimulation:Connect(function()
-										if vape.Modules.Fly.Enabled or vape.Modules.InfiniteFly.Enabled or vape.Modules.LongJump.Enabled then
-											connection:Disconnect()
-											AntiFallDirection = nil
-											return
-										end
-
-										if entitylib.isAlive and lplr:GetAttribute('LastTeleported') == lastTeleport then
-											local delta = ((top - entitylib.character.RootPart.Position) * Vector3.new(1, 0, 1))
-											local root = entitylib.character.RootPart
-											AntiFallDirection = delta.Unit == delta.Unit and delta.Unit or Vector3.zero
-											root.Velocity *= Vector3.new(1, 0, 1)
-											rayCheck.FilterDescendantsInstances = {gameCamera, lplr.Character}
-											rayCheck.CollisionGroup = root.CollisionGroup
-
-											local ray = workspace:Raycast(root.Position, AntiFallDirection, rayCheck)
-											if ray then
-												for _ = 1, 10 do
-													local dpos = roundPos(ray.Position + ray.Normal * 1.5) + Vector3.new(0, 3, 0)
-													if not getPlacedBlock(dpos) then
-														top = Vector3.new(top.X, pos.Y, top.Z)
-														break
-													end
-												end
-											end
-
-											root.CFrame += Vector3.new(0, top.Y - root.Position.Y, 0)
-											if not frictionTable.Speed then
-												root.AssemblyLinearVelocity = (AntiFallDirection * getSpeed()) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
-											end
-
-											if delta.Magnitude < 1 then
-												connection:Disconnect()
-												AntiFallDirection = nil
-											end
-										else
-											connection:Disconnect()
-											AntiFallDirection = nil
-										end
-									end)
-									AntiFall:Clean(connection)
-								end
-							elseif Mode.Value == 'Velocity' then
-								entitylib.character.RootPart.Velocity = Vector3.new(entitylib.character.RootPart.Velocity.X, 100, entitylib.character.RootPart.Velocity.Z)
-							end
-						end
-					end))
-				end
-			else
-				AntiFallDirection = nil
-			end
-		end,
-		Tooltip = 'Help\'s you with your Parkinson\'s\nPrevents you from falling into the void.'
-	})
-	Mode = AntiFall:CreateDropdown({
-		Name = 'Move Mode',
-		List = {'Normal', 'Collide', 'Velocity'},
-		Function = function(val)
-			if AntiFallPart then
-				AntiFallPart.CanCollide = val == 'Collide'
-			end
-		end,
-	Tooltip = 'Normal - Smoothly moves you towards the nearest safe point\nVelocity - Launches you upward after touching\nCollide - Allows you to walk on the part'
-	})
-	local materials = {'ForceField'}
-	for _, v in Enum.Material:GetEnumItems() do
-		if v.Name ~= 'ForceField' then
-			table.insert(materials, v.Name)
-		end
-	end
-	Material = AntiFall:CreateDropdown({
-		Name = 'Material',
-		List = materials,
-		Function = function(val)
-			if AntiFallPart then
-				AntiFallPart.Material = Enum.Material[val]
-			end
-		end
-	})
-	Color = AntiFall:CreateColorSlider({
-		Name = 'Color',
-		DefaultOpacity = 0.5,
-		Function = function(h, s, v, o)
-			if AntiFallPart then
-				AntiFallPart.Color = Color3.fromHSV(h, s, v)
-				AntiFallPart.Transparency = 1 - o
-			end
-		end
-	})
-end)
 	
 run(function()
 	local FastBreak
@@ -1969,7 +1759,7 @@ run(function()
 	end
 	
 	HitBoxes = vape.Categories.Blatant:CreateModule({
-		Name = 'expmadd',
+		Name = 'HitBoxes',
 		Function = function(callback)
 			if callback then
 				if Mode.Value == 'Sword' then
@@ -2009,13 +1799,13 @@ run(function()
 				HitBoxes:Toggle()
 			end
 		end,
-		Tooltip = 'dddd - Increases the range around you to hit entities\nPlayer - Increases the players hitbox'
+		Tooltip = 'Sword - Increases the range around you to hit entities\nPlayer - Increases the players hitbox'
 	})
 	Expand = HitBoxes:CreateSlider({
 		Name = 'Expand amount',
 		Min = 0,
-		Max = 155.4,
-		Default = 155.4,
+		Max = 14.4,
+		Default = 14.4,
 		Decimal = 10,
 		Function = function(val)
 			if HitBoxes.Enabled then
@@ -2036,12 +1826,12 @@ end)
 	
 run(function()
 	vape.Categories.Blatant:CreateModule({
-		Name = 'eufjieof',
+		Name = 'KeepSprint',
 		Function = function(callback)
 			debug.setconstant(bedwars.SprintController.startSprinting, 5, callback and 'blockSprinting' or 'blockSprint')
 			bedwars.SprintController:stopSprinting()
 		end,
-		Tooltip = 'lol.'
+		Tooltip = 'Lets you sprint with a speed potion.'
 	})
 end)
 	
@@ -3942,67 +3732,6 @@ run(function()
 	})
 end)
 	
-
-run(function()
-    local Snaappy
-
-    Snaappy = vape.Categories.Utility:CreateModule({
-        Name = 'Snaappy',
-        Function = function(callback)
-            if callback then
-                task.spawn(function()
-                    while Snaappy.Enabled do
-                        local char = lplr.Character
-                        if char and char:FindFirstChild("HumanoidRootPart") then
-                            local hrp = char.HumanoidRootPart
-                            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(15), 0)
-                        end
-                        task.wait(0.05)
-                    end
-                end)
-            end
-        end,
-        Tooltip = 'Spin spin spin like Snaappy!'
-    })
-end)
-
-run(function()
-	local AutoBalloon
-	
-	AutoBalloon = vape.Categories.Utility:CreateModule({
-		Name = 'AutoBalloon',
-		Function = function(callback)
-			if callback then
-				repeat task.wait() until store.matchState ~= 0 or (not AutoBalloon.Enabled)
-				if not AutoBalloon.Enabled then return end
-	
-				local lowestpoint = math.huge
-				for _, v in store.blocks do
-					local point = (v.Position.Y - (v.Size.Y / 2)) - 50
-					if point < lowestpoint then 
-						lowestpoint = point 
-					end
-				end
-	
-				repeat
-					if entitylib.isAlive then
-						if entitylib.character.RootPart.Position.Y < lowestpoint and (lplr.Character:GetAttribute('InflatedBalloons') or 0) < 3 then
-							local balloon = getItem('balloon')
-							if balloon then
-								for _ = 1, 3 do 
-									bedwars.BalloonController:inflateBalloon() 
-								end
-							end
-							task.wait(0.1)
-						end
-					end
-					task.wait(0.1)
-				until not AutoBalloon.Enabled
-			end
-		end,
-		Tooltip = 'Inflates when you fall into the void'
-	})
-end)
 	
 run(function()
 	local AutoKit
@@ -4482,29 +4211,7 @@ run(function()
 		Tooltip = 'Chooses a random mode'
 	})
 end)
-	run(function()
-	vape.Categories.World:CreateModule({
-		Name = 'antihit',
-		Function = function(callback)
-			if callback then
-				for _, v in getconnections(lplr.Idled) do
-					v:Disconnect()
-				end
 	
-				for _, v in getconnections(runService.Heartbeat) do
-					if type(v.Function) == 'function' and table.find(debug.getconstants(v.Function), remotes.AfkStatus) then
-						v:Disconnect()
-					end
-				end
-	
-				bedwars.Client:Get(remotes.AfkStatus):SendToServer({
-					afk = false
-				})
-			end
-		end,
-		Tooltip = 'ssss'
-	})
-end)
 run(function()
 	local shooting, old = false
 	
@@ -4700,325 +4407,9 @@ run(function()
 	})
 end)
 	
-run(function()
-	local MissileTP
 	
-	MissileTP = vape.Categories.Utility:CreateModule({
-		Name = 'MissileTP',
-		Function = function(callback)
-			if callback then
-				MissileTP:Toggle()
-				local plr = entitylib.EntityMouse({
-					Range = 1000,
-					Players = true,
-					Part = 'RootPart'
-				})
 	
-				if getItem('guided_missile') and plr then
-					local projectile = bedwars.RuntimeLib.await(bedwars.GuidedProjectileController.fireGuidedProjectile:CallServerAsync('guided_missile'))
-					if projectile then
-						local projectilemodel = projectile.model
-						if not projectilemodel.PrimaryPart then
-							projectilemodel:GetPropertyChangedSignal('PrimaryPart'):Wait()
-						end
 	
-						local bodyforce = Instance.new('BodyForce')
-						bodyforce.Force = Vector3.new(0, projectilemodel.PrimaryPart.AssemblyMass * workspace.Gravity, 0)
-						bodyforce.Name = 'AntiGravity'
-						bodyforce.Parent = projectilemodel.PrimaryPart
-	
-						repeat
-							projectile.model:SetPrimaryPartCFrame(CFrame.lookAlong(plr.RootPart.CFrame.p, gameCamera.CFrame.LookVector))
-							task.wait(0.1)
-						until not projectile.model or not projectile.model.Parent
-					else
-						notif('MissileTP', 'Missile on cooldown.', 3)
-					end
-				end
-			end
-		end,
-		Tooltip = 'Spawns and teleports a missile to a player\nnear your mouse.'
-	})
-end)
-	
-run(function()
-	local PickupRange
-	local Range
-	local Network
-	local Lower
-	
-	PickupRange = vape.Categories.Utility:CreateModule({
-		Name = 'PickupRange',
-		Function = function(callback)
-			if callback then
-				local items = collection('ItemDrop', PickupRange)
-				repeat
-					if entitylib.isAlive then
-						local localPosition = entitylib.character.RootPart.Position
-						for _, v in items do
-							if tick() - (v:GetAttribute('ClientDropTime') or 0) < 2 then continue end
-							if isnetworkowner(v) and Network.Enabled and entitylib.character.Humanoid.Health > 0 then 
-								v.CFrame = CFrame.new(localPosition - Vector3.new(0, 3, 0)) 
-							end
-							
-							if (localPosition - v.Position).Magnitude <= Range.Value then
-								if Lower.Enabled and (localPosition.Y - v.Position.Y) < (entitylib.character.HipHeight - 1) then continue end
-								task.spawn(function()
-									bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
-										itemDrop = v
-									}):andThen(function(suc)
-										if suc and bedwars.SoundList then
-											bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
-											local sound = bedwars.ItemMeta[v.Name].pickUpOverlaySound
-											if sound then
-												bedwars.SoundManager:playSound(sound, {
-													position = v.Position,
-													volumeMultiplier = 0.9
-												})
-											end
-										end
-									end)
-								end)
-							end
-						end
-					end
-					task.wait(0.1)
-				until not PickupRange.Enabled
-			end
-		end,
-		Tooltip = 'Picks up items from a farther distance'
-	})
-	Range = PickupRange:CreateSlider({
-		Name = 'Range',
-		Min = 1,
-		Max = 10,
-		Default = 10,
-		Suffix = function(val) 
-			return val == 1 and 'stud' or 'studs' 
-		end
-	})
-	Network = PickupRange:CreateToggle({
-		Name = 'Network TP',
-		Default = true
-	})
-	Lower = PickupRange:CreateToggle({Name = 'Feet Check'})
-end)
-	
-run(function()
-	local RavenTP
-	
-	RavenTP = vape.Categories.Utility:CreateModule({
-		Name = 'RavenTP',
-		Function = function(callback)
-			if callback then
-				RavenTP:Toggle()
-				local plr = entitylib.EntityMouse({
-					Range = 1000,
-					Players = true,
-					Part = 'RootPart'
-				})
-	
-				if getItem('raven') and plr then
-					bedwars.Client:Get(remotes.SpawnRaven):CallServerAsync():andThen(function(projectile)
-						if projectile then
-							local bodyforce = Instance.new('BodyForce')
-							bodyforce.Force = Vector3.new(0, projectile.PrimaryPart.AssemblyMass * workspace.Gravity, 0)
-							bodyforce.Parent = projectile.PrimaryPart
-	
-							if plr then
-								task.spawn(function()
-									for _ = 1, 20 do
-										if plr.RootPart and projectile then
-											projectile:SetPrimaryPartCFrame(CFrame.lookAlong(plr.RootPart.Position, gameCamera.CFrame.LookVector))
-										end
-										task.wait(0.05)
-									end
-								end)
-								task.wait(0.3)
-								bedwars.RavenController:detonateRaven()
-							end
-						end
-					end)
-				end
-			end
-		end,
-		Tooltip = 'Spawns and teleports a raven to a player\nnear your mouse.'
-	})
-end)
-	
-run(function()
-	local Scaffold
-	local Expand
-	local Tower
-	local Downwards
-	local Diagonal
-	local LimitItem
-	local Mouse
-	local adjacent, lastpos, label = {}, Vector3.zero
-	
-	for x = -3, 3, 3 do
-		for y = -3, 3, 3 do
-			for z = -3, 3, 3 do
-				local vec = Vector3.new(x, y, z)
-				if vec ~= Vector3.zero then
-					table.insert(adjacent, vec)
-				end
-			end
-		end
-	end
-	
-	local function nearCorner(poscheck, pos)
-		local startpos = poscheck - Vector3.new(3, 3, 3)
-		local endpos = poscheck + Vector3.new(3, 3, 3)
-		local check = poscheck + (pos - poscheck).Unit * 100
-		return Vector3.new(math.clamp(check.X, startpos.X, endpos.X), math.clamp(check.Y, startpos.Y, endpos.Y), math.clamp(check.Z, startpos.Z, endpos.Z))
-	end
-	
-	local function blockProximity(pos)
-		local mag, returned = 60
-		local tab = getBlocksInPoints(bedwars.BlockController:getBlockPosition(pos - Vector3.new(21, 21, 21)), bedwars.BlockController:getBlockPosition(pos + Vector3.new(21, 21, 21)))
-		for _, v in tab do
-			local blockpos = nearCorner(v, pos)
-			local newmag = (pos - blockpos).Magnitude
-			if newmag < mag then
-				mag, returned = newmag, blockpos
-			end
-		end
-		table.clear(tab)
-		return returned
-	end
-	
-	local function checkAdjacent(pos)
-		for _, v in adjacent do
-			if getPlacedBlock(pos + v) then
-				return true
-			end
-		end
-		return false
-	end
-	
-	local function getScaffoldBlock()
-		if store.hand.toolType == 'block' then
-			return store.hand.tool.Name, store.hand.amount
-		elseif (not LimitItem.Enabled) then
-			local wool, amount = getWool()
-			if wool then
-				return wool, amount
-			else
-				for _, item in store.inventory.inventory.items do
-					if bedwars.ItemMeta[item.itemType].block then
-						return item.itemType, item.amount
-					end
-				end
-			end
-		end
-	
-		return nil, 0
-	end
-	
-	Scaffold = vape.Categories.Utility:CreateModule({
-		Name = 'Scaffold',
-		Function = function(callback)
-			if label then
-				label.Visible = callback
-			end
-	
-			if callback then
-				repeat
-					if entitylib.isAlive then
-						local wool, amount = getScaffoldBlock()
-	
-						if Mouse.Enabled then
-							if not inputService:IsMouseButtonPressed(0) then
-								wool = nil
-							end
-						end
-	
-						if label then
-							amount = amount or 0
-							label.Text = amount..' <font color="rgb(170, 170, 170)">(Scaffold)</font>'
-							label.TextColor3 = Color3.fromHSV((amount / 128) / 2.8, 0.86, 1)
-						end
-	
-						if wool then
-							local root = entitylib.character.RootPart
-							if Tower.Enabled and inputService:IsKeyDown(Enum.KeyCode.Space) and (not inputService:GetFocusedTextBox()) then
-								root.Velocity = Vector3.new(root.Velocity.X, 38, root.Velocity.Z)
-							end
-	
-							for i = Expand.Value, 1, -1 do
-								local currentpos = roundPos(root.Position - Vector3.new(0, entitylib.character.HipHeight + (Downwards.Enabled and inputService:IsKeyDown(Enum.KeyCode.LeftShift) and 4.5 or 1.5), 0) + entitylib.character.Humanoid.MoveDirection * (i * 3))
-								if Diagonal.Enabled then
-									if math.abs(math.round(math.deg(math.atan2(-entitylib.character.Humanoid.MoveDirection.X, -entitylib.character.Humanoid.MoveDirection.Z)) / 45) * 45) % 90 == 45 then
-										local dt = (lastpos - currentpos)
-										if ((dt.X == 0 and dt.Z ~= 0) or (dt.X ~= 0 and dt.Z == 0)) and ((lastpos - root.Position) * Vector3.new(1, 0, 1)).Magnitude < 2.5 then
-											currentpos = lastpos
-										end
-									end
-								end
-	
-								local block, blockpos = getPlacedBlock(currentpos)
-								if not block then
-									blockpos = checkAdjacent(blockpos * 3) and blockpos * 3 or blockProximity(currentpos)
-									if blockpos then
-										task.spawn(bedwars.placeBlock, blockpos, wool, false)
-									end
-								end
-								lastpos = currentpos
-							end
-						end
-					end
-	
-					task.wait(0.03)
-				until not Scaffold.Enabled
-			else
-				Label = nil
-			end
-		end,
-		Tooltip = 'Helps you make bridges/scaffold walk.'
-	})
-	Expand = Scaffold:CreateSlider({
-		Name = 'Expand',
-		Min = 1,
-		Max = 6
-	})
-	Tower = Scaffold:CreateToggle({
-		Name = 'Tower',
-		Default = true
-	})
-	Downwards = Scaffold:CreateToggle({
-		Name = 'Downwards',
-		Default = true
-	})
-	Diagonal = Scaffold:CreateToggle({
-		Name = 'Diagonal',
-		Default = true
-	})
-	LimitItem = Scaffold:CreateToggle({Name = 'Limit to items'})
-	Mouse = Scaffold:CreateToggle({Name = 'Require mouse down'})
-	Count = Scaffold:CreateToggle({
-		Name = 'Block Count',
-		Function = function(callback)
-			if callback then
-				label = Instance.new('TextLabel')
-				label.Size = UDim2.fromOffset(100, 20)
-				label.Position = UDim2.new(0.5, 6, 0.5, 60)
-				label.BackgroundTransparency = 1
-				label.AnchorPoint = Vector2.new(0.5, 0)
-				label.Text = '0'
-				label.TextColor3 = Color3.new(0, 1, 0)
-				label.TextSize = 18
-				label.RichText = true
-				label.Font = Enum.Font.Arial
-				label.Visible = Scaffold.Enabled
-				label.Parent = vape.gui
-			else
-				label:Destroy()
-				label = nil
-			end
-		end
-	})
-end)
 	
 run(function()
 	local ShopTierBypass
@@ -5438,8 +4829,6 @@ run(function()
 	})
 end)
 	
-
-
 run(function()
 	local ChestSteal
 	local Range
@@ -5508,7 +4897,7 @@ run(function()
 	})
 	Open = ChestSteal:CreateToggle({Name = 'GUI Check'})
 	Skywars = ChestSteal:CreateToggle({
-		Name = 'Only GEEGEGEGEGEGE',
+		Name = 'Only Skywars',
 		Function = function()
 			if ChestSteal.Enabled then
 				ChestSteal:Toggle()
@@ -5519,760 +4908,10 @@ run(function()
 	})
 end)
 	
-run(function()
-	local Schematica
-	local File
-	local Mode
-	local Transparency
-	local parts, guidata, poschecklist = {}, {}, {}
-	local point1, point2
 	
-	for x = -3, 3, 3 do
-		for y = -3, 3, 3 do
-			for z = -3, 3, 3 do
-				if Vector3.new(x, y, z) ~= Vector3.zero then
-					table.insert(poschecklist, Vector3.new(x, y, z))
-				end
-			end
-		end
-	end
+
 	
-	local function checkAdjacent(pos)
-		for _, v in poschecklist do
-			if getPlacedBlock(pos + v) then return true end
-		end
-		return false
-	end
-	
-	local function getPlacedBlocksInPoints(s, e)
-		local list, blocks = {}, bedwars.BlockController:getStore()
-		for x = (e.X > s.X and s.X or e.X), (e.X > s.X and e.X or s.X) do
-			for y = (e.Y > s.Y and s.Y or e.Y), (e.Y > s.Y and e.Y or s.Y) do
-				for z = (e.Z > s.Z and s.Z or e.Z), (e.Z > s.Z and e.Z or s.Z) do
-					local vec = Vector3.new(x, y, z)
-					local block = blocks:getBlockAt(vec)
-					if block and block:GetAttribute('PlacedByUserId') == lplr.UserId then
-						list[vec] = block
-					end
-				end
-			end
-		end
-		return list
-	end
-	
-	local function loadMaterials()
-		for _, v in guidata do 
-			v:Destroy() 
-		end
-		local suc, read = pcall(function() 
-			return isfile(File.Value) and httpService:JSONDecode(readfile(File.Value)) 
-		end)
-	
-		if suc and read then
-			local items = {}
-			for _, v in read do 
-				items[v[2]] = (items[v[2]] or 0) + 1 
-			end
-			
-			for i, v in items do
-				local holder = Instance.new('Frame')
-				holder.Size = UDim2.new(1, 0, 0, 32)
-				holder.BackgroundTransparency = 1
-				holder.Parent = Schematica.Children
-				local icon = Instance.new('ImageLabel')
-				icon.Size = UDim2.fromOffset(24, 24)
-				icon.Position = UDim2.fromOffset(4, 4)
-				icon.BackgroundTransparency = 1
-				icon.Image = bedwars.getIcon({itemType = i}, true)
-				icon.Parent = holder
-				local text = Instance.new('TextLabel')
-				text.Size = UDim2.fromOffset(100, 32)
-				text.Position = UDim2.fromOffset(32, 0)
-				text.BackgroundTransparency = 1
-				text.Text = (bedwars.ItemMeta[i] and bedwars.ItemMeta[i].displayName or i)..': '..v
-				text.TextXAlignment = Enum.TextXAlignment.Left
-				text.TextColor3 = uipallet.Text
-				text.TextSize = 14
-				text.FontFace = uipallet.Font
-				text.Parent = holder
-				table.insert(guidata, holder)
-			end
-			table.clear(read)
-			table.clear(items)
-		end
-	end
-	
-	local function save()
-		if point1 and point2 then
-			local tab = getPlacedBlocksInPoints(point1, point2)
-			local savetab = {}
-			point1 = point1 * 3
-			for i, v in tab do
-				i = bedwars.BlockController:getBlockPosition(CFrame.lookAlong(point1, entitylib.character.RootPart.CFrame.LookVector):PointToObjectSpace(i * 3)) * 3
-				table.insert(savetab, {
-					{
-						x = i.X, 
-						y = i.Y, 
-						z = i.Z
-					}, 
-					v.Name
-				})
-			end
-			point1, point2 = nil, nil
-			writefile(File.Value, httpService:JSONEncode(savetab))
-			notif('Schematica', 'Saved '..getTableSize(tab)..' blocks', 5)
-			loadMaterials()
-			table.clear(tab)
-			table.clear(savetab)
-		else
-			local mouseinfo = bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
-			if mouseinfo and mouseinfo.target then
-				if point1 then
-					point2 = mouseinfo.target.blockRef.blockPosition
-					notif('Schematica', 'Selected position 2, toggle again near position 1 to save it', 3)
-				else
-					point1 = mouseinfo.target.blockRef.blockPosition
-					notif('Schematica', 'Selected position 1', 3)
-				end
-			end
-		end
-	end
-	
-	local function load(read)
-		local mouseinfo = bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
-		if mouseinfo and mouseinfo.target then
-			local position = CFrame.new(mouseinfo.placementPosition * 3) * CFrame.Angles(0, math.rad(math.round(math.deg(math.atan2(-entitylib.character.RootPart.CFrame.LookVector.X, -entitylib.character.RootPart.CFrame.LookVector.Z)) / 45) * 45), 0)
-	
-			for _, v in read do
-				local blockpos = bedwars.BlockController:getBlockPosition((position * CFrame.new(v[1].x, v[1].y, v[1].z)).p) * 3
-				if parts[blockpos] then continue end
-				local handler = bedwars.BlockController:getHandlerRegistry():getHandler(v[2]:find('wool') and getWool() or v[2])
-				if handler then
-					local part = handler:place(blockpos / 3, 0)
-					part.Transparency = Transparency.Value
-					part.CanCollide = false
-					part.Anchored = true
-					part.Parent = workspace
-					parts[blockpos] = part
-				end
-			end
-			table.clear(read)
-	
-			repeat
-				if entitylib.isAlive then
-					local localPosition = entitylib.character.RootPart.Position
-					for i, v in parts do
-						if (i - localPosition).Magnitude < 60 and checkAdjacent(i) then
-							if not Schematica.Enabled then break end
-							if not getItem(v.Name) then continue end
-							bedwars.placeBlock(i, v.Name, false)
-							task.delay(0.1, function()
-								local block = getPlacedBlock(i)
-								if block then
-									v:Destroy()
-									parts[i] = nil
-								end
-							end)
-						end
-					end
-				end
-				task.wait()
-			until getTableSize(parts) <= 0
-	
-			if getTableSize(parts) <= 0 and Schematica.Enabled then
-				notif('Schematica', 'Finished building', 5)
-				Schematica:Toggle()
-			end
-		end
-	end
-	
-	Schematica = vape.Categories.World:CreateModule({
-		Name = 'Schematica',
-		Function = function(callback)
-			if callback then
-				if not File.Value:find('.json') then
-					notif('Schematica', 'Invalid file', 3)
-					Schematica:Toggle()
-					return
-				end
-	
-				if Mode.Value == 'Save' then
-					save()
-					Schematica:Toggle()
-				else
-					local suc, read = pcall(function() 
-						return isfile(File.Value) and httpService:JSONDecode(readfile(File.Value)) 
-					end)
-	
-					if suc and read then
-						load(read)
-					else
-						notif('Schematica', 'Missing / corrupted file', 3)
-						Schematica:Toggle()
-					end
-				end
-			else
-				for _, v in parts do 
-					v:Destroy() 
-				end
-				table.clear(parts)
-			end
-		end,
-		Tooltip = 'Save and load placements of buildings'
-	})
-	File = Schematica:CreateTextBox({
-		Name = 'File',
-		Function = function()
-			loadMaterials()
-			point1, point2 = nil, nil
-		end
-	})
-	Mode = Schematica:CreateDropdown({
-		Name = 'Mode',
-		List = {'Load', 'Save'}
-	})
-	Transparency = Schematica:CreateSlider({
-		Name = 'Transparency',
-		Min = 0,
-		Max = 1,
-		Default = 0.7,
-		Decimal = 10,
-		Function = function(val)
-			for _, v in parts do 
-				v.Transparency = val 
-			end
-		end
-	})
-end)
-	
-run(function()
-	local ArmorSwitch
-	local Mode
-	local Targets
-	local Range
-	
-	ArmorSwitch = vape.Categories.Inventory:CreateModule({
-		Name = 'ArmorSwitch',
-		Function = function(callback)
-			if callback then
-				if Mode.Value == 'Toggle' then
-					repeat
-						local state = entitylib.EntityPosition({
-							Part = 'RootPart',
-							Range = Range.Value,
-							Players = Targets.Players.Enabled,
-							NPCs = Targets.NPCs.Enabled,
-							Wallcheck = Targets.Walls.Enabled
-						}) and true or false
-	
-						for i = 0, 2 do
-							if (store.inventory.inventory.armor[i + 1] ~= 'empty') ~= state and ArmorSwitch.Enabled then
-								bedwars.Store:dispatch({
-									type = 'InventorySetArmorItem',
-									item = store.inventory.inventory.armor[i + 1] == 'empty' and state and getBestArmor(i) or nil,
-									armorSlot = i
-								})
-								vapeEvents.InventoryChanged.Event:Wait()
-							end
-						end
-						task.wait(0.1)
-					until not ArmorSwitch.Enabled
-				else
-					ArmorSwitch:Toggle()
-					for i = 0, 2 do
-						bedwars.Store:dispatch({
-							type = 'InventorySetArmorItem',
-							item = store.inventory.inventory.armor[i + 1] == 'empty' and getBestArmor(i) or nil,
-							armorSlot = i
-						})
-						vapeEvents.InventoryChanged.Event:Wait()
-					end
-				end
-			end
-		end,
-		Tooltip = 'Puts on / takes off armor when toggled for baiting.'
-	})
-	Mode = ArmorSwitch:CreateDropdown({
-		Name = 'Mode',
-		List = {'Toggle', 'On Key'}
-	})
-	Targets = ArmorSwitch:CreateTargets({
-		Players = true,
-		NPCs = true
-	})
-	Range = ArmorSwitch:CreateSlider({
-		Name = 'Range',
-		Min = 1,
-		Max = 30,
-		Default = 30,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-end)
-	
-run(function()
-	local AutoBank
-	local UIToggle
-	local UI
-	local Chests
-	local Items = {}
-	
-	local function addItem(itemType, shop)
-		local item = Instance.new('ImageLabel')
-		item.Image = bedwars.getIcon({itemType = itemType}, true)
-		item.Size = UDim2.fromOffset(32, 32)
-		item.Name = itemType
-		item.BackgroundTransparency = 1
-		item.LayoutOrder = #UI:GetChildren()
-		item.Parent = UI
-		local itemtext = Instance.new('TextLabel')
-		itemtext.Name = 'Amount'
-		itemtext.Size = UDim2.fromScale(1, 1)
-		itemtext.BackgroundTransparency = 1
-		itemtext.Text = ''
-		itemtext.TextColor3 = Color3.new(1, 1, 1)
-		itemtext.TextSize = 16
-		itemtext.TextStrokeTransparency = 0.3
-		itemtext.Font = Enum.Font.Arial
-		itemtext.Parent = item
-		Items[itemType] = {Object = itemtext, Type = shop}
-	end
-	
-	local function refreshBank(echest)
-		for i, v in Items do
-			local item = echest:FindFirstChild(i)
-			v.Object.Text = item and item:GetAttribute('Amount') or ''
-		end
-	end
-	
-	local function nearChest()
-		if entitylib.isAlive then
-			local pos = entitylib.character.RootPart.Position
-			for _, chest in Chests do
-				if (chest.Position - pos).Magnitude < 20 then
-					return true
-				end
-			end
-		end
-	end
-	
-	local function handleState()
-		local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name..'_personal')
-		if not chest then return end
-	
-		local mapCF = workspace.MapCFrames:FindFirstChild((lplr:GetAttribute('Team') or 1)..'_spawn')
-		if mapCF and (entitylib.character.RootPart.Position - mapCF.Value.Position).Magnitude < 80 then
-			for _, v in chest:GetChildren() do
-				local item = Items[v.Name]
-				if item then
-					task.spawn(function()
-						bedwars.Client:GetNamespace('Inventory'):Get('ChestGetItem'):CallServer(chest, v)
-						refreshBank(chest)
-					end)
-				end
-			end
-		else
-			for _, v in store.inventory.inventory.items do
-				local item = Items[v.itemType]
-				if item then
-					task.spawn(function()
-						bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
-						refreshBank(chest)
-					end)
-				end
-			end
-		end
-	end
-	
-	AutoBank = vape.Categories.Inventory:CreateModule({
-		Name = 'AutoBank',
-		Function = function(callback)
-			if callback then
-				Chests = collection('personal-chest', AutoBank)
-				UI = Instance.new('Frame')
-				UI.Size = UDim2.new(1, 0, 0, 32)
-				UI.Position = UDim2.fromOffset(0, -240)
-				UI.BackgroundTransparency = 1
-				UI.Visible = UIToggle.Enabled
-				UI.Parent = vape.gui
-				AutoBank:Clean(UI)
-				local Sort = Instance.new('UIListLayout')
-				Sort.FillDirection = Enum.FillDirection.Horizontal
-				Sort.HorizontalAlignment = Enum.HorizontalAlignment.Center
-				Sort.SortOrder = Enum.SortOrder.LayoutOrder
-				Sort.Parent = UI
-				addItem('iron', true)
-				addItem('gold', true)
-				addItem('diamond', false)
-				addItem('emerald', true)
-				addItem('void_crystal', true)
-	
-				repeat
-					local hotbar = lplr.PlayerGui:FindFirstChild('hotbar')
-					hotbar = hotbar and hotbar['1']:FindFirstChild('HotbarHealthbarContainer')
-					if hotbar then
-						UI.Position = UDim2.fromOffset(0, (hotbar.AbsolutePosition.Y + guiService:GetGuiInset().Y) - 40)
-					end
-	
-					local newState = nearChest()
-					if newState then
-						handleState()
-					end
-	
-					task.wait(0.1)
-				until (not AutoBank.Enabled)
-			else
-				table.clear(Items)
-			end
-		end,
-		Tooltip = 'Automatically puts resources in ender chest'
-	})
-	UIToggle = AutoBank:CreateToggle({
-		Name = 'UI',
-		Function = function(callback)
-			if AutoBank.Enabled then
-				UI.Visible = callback
-			end
-		end,
-		Default = true
-	})
-end)
-	
-run(function()
-	local AutoBuy
-	local Sword
-	local Armor
-	local Upgrades
-	local TierCheck
-	local BedwarsCheck
-	local GUI
-	local SmartCheck
-	local Custom = {}
-	local CustomPost = {}
-	local UpgradeToggles = {}
-	local Functions, id = {}
-	local Callbacks = {Custom, Functions, CustomPost}
-	local npctick = tick()
-	
-	local swords = {
-		'wood_sword',
-		'stone_sword',
-		'iron_sword',
-		'diamond_sword',
-		'emerald_sword'
-	}
-	
-	local armors = {
-		'none',
-		'leather_chestplate',
-		'iron_chestplate',
-		'diamond_chestplate',
-		'emerald_chestplate'
-	}
-	
-	local axes = {
-		'none',
-		'wood_axe',
-		'stone_axe',
-		'iron_axe',
-		'diamond_axe'
-	}
-	
-	local pickaxes = {
-		'none',
-		'wood_pickaxe',
-		'stone_pickaxe',
-		'iron_pickaxe',
-		'diamond_pickaxe'
-	}
-	
-	local function getShopNPC()
-		local shop, items, upgrades, newid = nil, false, false, nil
-		if entitylib.isAlive then
-			local localPosition = entitylib.character.RootPart.Position
-			for _, v in store.shop do
-				if (v.RootPart.Position - localPosition).Magnitude <= 20 then
-					shop = v.Upgrades or v.Shop or nil
-					upgrades = upgrades or v.Upgrades
-					items = items or v.Shop
-					newid = v.Shop and v.Id or newid
-				end
-			end
-		end
-		return shop, items, upgrades, newid
-	end
-	
-	local function canBuy(item, currencytable, amount)
-		amount = amount or 1
-		if not currencytable[item.currency] then
-			local currency = getItem(item.currency)
-			currencytable[item.currency] = currency and currency.amount or 0
-		end
-		if item.ignoredByKit and table.find(item.ignoredByKit, store.equippedKit or '') then return false end
-		if item.lockedByForge or item.disabled then return false end
-		if item.require and item.require.teamUpgrade then
-			if (bedwars.Store:getState().Bedwars.teamUpgrades[item.require.teamUpgrade.upgradeId] or -1) < item.require.teamUpgrade.lowestTierIndex then
-				return false
-			end
-		end
-		return currencytable[item.currency] >= (item.price * amount)
-	end
-	
-	local function buyItem(item, currencytable)
-		if not id then return end
-		notif('AutoBuy', 'Bought '..bedwars.ItemMeta[item.itemType].displayName, 3)
-		bedwars.Client:Get('BedwarsPurchaseItem'):CallServerAsync({
-			shopItem = item,
-			shopId = id
-		}):andThen(function(suc)
-			if suc then
-				bedwars.SoundManager:playSound(bedwars.SoundList.BEDWARS_PURCHASE_ITEM)
-				bedwars.Store:dispatch({
-					type = 'BedwarsAddItemPurchased',
-					itemType = item.itemType
-				})
-				bedwars.BedwarsShopController.alreadyPurchasedMap[item.itemType] = true
-			end
-		end)
-		currencytable[item.currency] -= item.price
-	end
-	
-	local function buyUpgrade(upgradeType, currencytable)
-		if not Upgrades.Enabled then return end
-		local upgrade = bedwars.TeamUpgradeMeta[upgradeType]
-		local currentUpgrades = bedwars.Store:getState().Bedwars.teamUpgrades[lplr:GetAttribute('Team')] or {}
-		local currentTier = (currentUpgrades[upgradeType] or 0) + 1
-		local bought = false
-	
-		for i = currentTier, #upgrade.tiers do
-			local tier = upgrade.tiers[i]
-			if tier.availableOnlyInQueue and not table.find(tier.availableOnlyInQueue, store.queueType) then continue end
-	
-			if canBuy({currency = 'diamond', price = tier.cost}, currencytable) then
-				notif('AutoBuy', 'Bought '..(upgrade.name == 'Armor' and 'Protection' or upgrade.name)..' '..i, 3)
-				bedwars.Client:Get('RequestPurchaseTeamUpgrade'):CallServerAsync(upgradeType)
-				currencytable.diamond -= tier.cost
-				bought = true
-			else
-				break
-			end
-		end
-	
-		return bought
-	end
-	
-	local function buyTool(tool, tools, currencytable)
-		local bought, buyable = false
-		tool = tool and table.find(tools, tool.itemType) and table.find(tools, tool.itemType) + 1 or math.huge
-	
-		for i = tool, #tools do
-			local v = bedwars.Shop.getShopItem(tools[i], lplr)
-			if canBuy(v, currencytable) then
-				if SmartCheck.Enabled and bedwars.ItemMeta[tools[i]].breakBlock and i > 2 then
-					if Armor.Enabled then
-						local currentarmor = store.inventory.inventory.armor[2]
-						currentarmor = currentarmor and currentarmor ~= 'empty' and currentarmor.itemType or 'none'
-						if (table.find(armors, currentarmor) or 3) < 3 then break end
-					end
-					if Sword.Enabled then
-						if store.tools.sword and (table.find(swords, store.tools.sword.itemType) or 2) < 2 then break end
-					end
-				end
-				bought = true
-				buyable = v
-			end
-			if TierCheck.Enabled and v.nextTier then break end
-		end
-	
-		if buyable then
-			buyItem(buyable, currencytable)
-		end
-	
-		return bought
-	end
-	
-	AutoBuy = vape.Categories.Inventory:CreateModule({
-		Name = 'AutoBuy',
-		Function = function(callback)
-			if callback then
-				repeat task.wait() until store.queueType ~= 'bedwars_test'
-				if BedwarsCheck.Enabled and not store.queueType:find('bedwars') then return end
-	
-				local lastupgrades
-				AutoBuy:Clean(vapeEvents.InventoryAmountChanged.Event:Connect(function()
-					if (npctick - tick()) > 1 then npctick = tick() end
-				end))
-	
-				repeat
-					local npc, shop, upgrades, newid = getShopNPC()
-					id = newid
-					if GUI.Enabled then
-						if not (bedwars.AppController:isAppOpen('BedwarsItemShopApp') or bedwars.AppController:isAppOpen('TeamUpgradeApp')) then
-							npc = nil
-						end
-					end
-	
-					if npc and lastupgrades ~= upgrades then
-						if (npctick - tick()) > 1 then npctick = tick() end
-						lastupgrades = upgrades
-					end
-	
-					if npc and npctick <= tick() and store.matchState ~= 2 and store.shopLoaded then
-						local currencytable = {}
-						local waitcheck
-						for _, tab in Callbacks do
-							for _, callback in tab do
-								if callback(currencytable, shop, upgrades) then
-									waitcheck = true
-								end
-							end
-						end
-						npctick = tick() + (waitcheck and 0.4 or math.huge)
-					end
-	
-					task.wait(0.1)
-				until not AutoBuy.Enabled
-			else
-				npctick = tick()
-			end
-		end,
-		Tooltip = 'Automatically buys items when you go near the shop'
-	})
-	Sword = AutoBuy:CreateToggle({
-		Name = 'Buy Sword',
-		Function = function(callback)
-			npctick = tick()
-			Functions[2] = callback and function(currencytable, shop)
-				if not shop then return end
-	
-				if store.equippedKit == 'dasher' then
-					swords = {
-						[1] = 'wood_dao',
-						[2] = 'stone_dao',
-						[3] = 'iron_dao',
-						[4] = 'diamond_dao',
-						[5] = 'emerald_dao'
-					}
-				elseif store.equippedKit == 'ice_queen' then
-					swords[5] = 'ice_sword'
-				elseif store.equippedKit == 'ember' then
-					swords[5] = 'infernal_saber'
-				elseif store.equippedKit == 'lumen' then
-					swords[5] = 'light_sword'
-				end
-	
-				return buyTool(store.tools.sword, swords, currencytable)
-			end or nil
-		end
-	})
-	Armor = AutoBuy:CreateToggle({
-		Name = 'Buy Armor',
-		Function = function(callback)
-			npctick = tick()
-			Functions[1] = callback and function(currencytable, shop)
-				if not shop then return end
-				local currentarmor = store.inventory.inventory.armor[2] ~= 'empty' and store.inventory.inventory.armor[2] or getBestArmor(1)
-				currentarmor = currentarmor and currentarmor.itemType or 'none'
-				return buyTool({itemType = currentarmor}, armors, currencytable)
-			end or nil
-		end,
-		Default = true
-	})
-	AutoBuy:CreateToggle({
-		Name = 'Buy Axe',
-		Function = function(callback)
-			npctick = tick()
-			Functions[3] = callback and function(currencytable, shop)
-				if not shop then return end
-				return buyTool(store.tools.wood or {itemType = 'none'}, axes, currencytable)
-			end or nil
-		end
-	})
-	AutoBuy:CreateToggle({
-		Name = 'Buy Pickaxe',
-		Function = function(callback)
-			npctick = tick()
-			Functions[4] = callback and function(currencytable, shop)
-				if not shop then return end
-				return buyTool(store.tools.stone, pickaxes, currencytable)
-			end or nil
-		end
-	})
-	Upgrades = AutoBuy:CreateToggle({
-		Name = 'Buy Upgrades',
-		Function = function(callback)
-			for _, v in UpgradeToggles do
-				v.Object.Visible = callback
-			end
-		end,
-		Default = true
-	})
-	local count = 0
-	for i, v in bedwars.TeamUpgradeMeta do
-		local toggleCount = count
-		table.insert(UpgradeToggles, AutoBuy:CreateToggle({
-			Name = 'Buy '..(v.name == 'Armor' and 'Protection' or v.name),
-			Function = function(callback)
-				npctick = tick()
-				Functions[5 + toggleCount + (v.name == 'Armor' and 20 or 0)] = callback and function(currencytable, shop, upgrades)
-					if not upgrades then return end
-					if v.disabledInQueue and table.find(v.disabledInQueue, store.queueType) then return end
-					return buyUpgrade(i, currencytable)
-				end or nil
-			end,
-			Darker = true,
-			Default = (i == 'ARMOR' or i == 'DAMAGE')
-		}))
-		count += 1
-	end
-	TierCheck = AutoBuy:CreateToggle({Name = 'Tier Check'})
-	BedwarsCheck = AutoBuy:CreateToggle({
-		Name = 'Only Bedwars',
-		Function = function()
-			if AutoBuy.Enabled then
-				AutoBuy:Toggle()
-				AutoBuy:Toggle()
-			end
-		end,
-		Default = true
-	})
-	GUI = AutoBuy:CreateToggle({Name = 'GUI check'})
-	SmartCheck = AutoBuy:CreateToggle({
-		Name = 'Smart check',
-		Default = true,
-		Tooltip = 'Buys iron armor before iron axe'
-	})
-	AutoBuy:CreateTextList({
-		Name = 'Item',
-		Placeholder = 'priority/item/amount/after',
-		Function = function(list)
-			table.clear(Custom)
-			table.clear(CustomPost)
-			for _, entry in list do
-				local tab = entry:split('/')
-				local ind = tonumber(tab[1])
-				if ind then
-					(tab[4] and CustomPost or Custom)[ind] = function(currencytable, shop)
-						if not shop then return end
-	
-						local v = bedwars.Shop.getShopItem(tab[2], lplr)
-						if v then
-							local item = getItem(tab[2] == 'wool_white' and bedwars.Shop.getTeamWool(lplr:GetAttribute('Team')) or tab[2])
-							item = (item and tonumber(tab[3]) - item.amount or tonumber(tab[3])) // v.amount
-							if item > 0 and canBuy(v, currencytable, item) then
-								for _ = 1, item do
-									buyItem(v, currencytable)
-								end
-								return true
-							end
-						end
-					end
-				end
-			end
-		end
-	})
-end)
+
 	
 run(function()
 	local AutoConsume
@@ -6354,586 +4993,7 @@ run(function()
 	})
 end)
 	
-run(function()
-	local AutoHotbar
-	local Mode
-	local Clear
-	local List
-	local Active
-	
-	local function CreateWindow(self)
-		local selectedslot = 1
-		local window = Instance.new('Frame')
-		window.Name = 'HotbarGUI'
-		window.Size = UDim2.fromOffset(660, 465)
-		window.Position = UDim2.fromScale(0.5, 0.5)
-		window.BackgroundColor3 = uipallet.Main
-		window.AnchorPoint = Vector2.new(0.5, 0.5)
-		window.Visible = false
-		window.Parent = vape.gui.ScaledGui
-		local title = Instance.new('TextLabel')
-		title.Name = 'Title'
-		title.Size = UDim2.new(1, -10, 0, 20)
-		title.Position = UDim2.fromOffset(math.abs(title.Size.X.Offset), 12)
-		title.BackgroundTransparency = 1
-		title.Text = 'AutoHotbar'
-		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.TextColor3 = uipallet.Text
-		title.TextSize = 13
-		title.FontFace = uipallet.Font
-		title.Parent = window
-		local divider = Instance.new('Frame')
-		divider.Name = 'Divider'
-		divider.Size = UDim2.new(1, 0, 0, 1)
-		divider.Position = UDim2.fromOffset(0, 40)
-		divider.BackgroundColor3 = color.Light(uipallet.Main, 0.04)
-		divider.BorderSizePixel = 0
-		divider.Parent = window
-		addBlur(window)
-		local modal = Instance.new('TextButton')
-		modal.Text = ''
-		modal.BackgroundTransparency = 1
-		modal.Modal = true
-		modal.Parent = window
-		local corner = Instance.new('UICorner')
-		corner.CornerRadius = UDim.new(0, 5)
-		corner.Parent = window
-		local close = Instance.new('ImageButton')
-		close.Name = 'Close'
-		close.Size = UDim2.fromOffset(24, 24)
-		close.Position = UDim2.new(1, -35, 0, 9)
-		close.BackgroundColor3 = Color3.new(1, 1, 1)
-		close.BackgroundTransparency = 1
-		close.Image = getcustomasset('newvape/assets/new/close.png')
-		close.ImageColor3 = color.Light(uipallet.Text, 0.2)
-		close.ImageTransparency = 0.5
-		close.AutoButtonColor = false
-		close.Parent = window
-		close.MouseEnter:Connect(function()
-			close.ImageTransparency = 0.3
-			tween:Tween(close, TweenInfo.new(0.2), {
-				BackgroundTransparency = 0.6
-			})
-		end)
-		close.MouseLeave:Connect(function()
-			close.ImageTransparency = 0.5
-			tween:Tween(close, TweenInfo.new(0.2), {
-				BackgroundTransparency = 1
-			})
-		end)
-		close.MouseButton1Click:Connect(function()
-			window.Visible = false
-			vape.gui.ScaledGui.ClickGui.Visible = true
-		end)
-		local closecorner = Instance.new('UICorner')
-		closecorner.CornerRadius = UDim.new(1, 0)
-		closecorner.Parent = close
-		local bigslot = Instance.new('Frame')
-		bigslot.Size = UDim2.fromOffset(110, 111)
-		bigslot.Position = UDim2.fromOffset(11, 71)
-		bigslot.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-		bigslot.Parent = window
-		local bigslotcorner = Instance.new('UICorner')
-		bigslotcorner.CornerRadius = UDim.new(0, 4)
-		bigslotcorner.Parent = bigslot
-		local bigslotstroke = Instance.new('UIStroke')
-		bigslotstroke.Color = color.Light(uipallet.Main, 0.034)
-		bigslotstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		bigslotstroke.Parent = bigslot
-		local slotnum = Instance.new('TextLabel')
-		slotnum.Size = UDim2.fromOffset(80, 20)
-		slotnum.Position = UDim2.fromOffset(25, 200)
-		slotnum.BackgroundTransparency = 1
-		slotnum.Text = 'SLOT 1'
-		slotnum.TextColor3 = color.Dark(uipallet.Text, 0.1)
-		slotnum.TextSize = 12
-		slotnum.FontFace = uipallet.Font
-		slotnum.Parent = window
-		for i = 1, 9 do
-			local slotbkg = Instance.new('TextButton')
-			slotbkg.Name = 'Slot'..i
-			slotbkg.Size = UDim2.fromOffset(51, 52)
-			slotbkg.Position = UDim2.fromOffset(89 + (i * 55), 382)
-			slotbkg.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-			slotbkg.Text = ''
-			slotbkg.AutoButtonColor = false
-			slotbkg.Parent = window
-			local slotimage = Instance.new('ImageLabel')
-			slotimage.Size = UDim2.fromOffset(32, 32)
-			slotimage.Position = UDim2.new(0.5, -16, 0.5, -16)
-			slotimage.BackgroundTransparency = 1
-			slotimage.Image = ''
-			slotimage.Parent = slotbkg
-			local slotcorner = Instance.new('UICorner')
-			slotcorner.CornerRadius = UDim.new(0, 4)
-			slotcorner.Parent = slotbkg
-			local slotstroke = Instance.new('UIStroke')
-			slotstroke.Color = color.Light(uipallet.Main, 0.04)
-			slotstroke.Thickness = 2
-			slotstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-			slotstroke.Enabled = i == selectedslot
-			slotstroke.Parent = slotbkg
-			slotbkg.MouseEnter:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-			end)
-			slotbkg.MouseLeave:Connect(function()
-				slotbkg.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-			end)
-			slotbkg.MouseButton1Click:Connect(function()
-				window['Slot'..selectedslot].UIStroke.Enabled = false
-				selectedslot = i
-				slotstroke.Enabled = true
-				slotnum.Text = 'SLOT '..selectedslot
-			end)
-			slotbkg.MouseButton2Click:Connect(function()
-				local obj = self.Hotbars[self.Selected]
-				if obj then
-					window['Slot'..i].ImageLabel.Image = ''
-					obj.Hotbar[tostring(i)] = nil
-					obj.Object['Slot'..i].Image = '	'
-				end
-			end)
-		end
-		local searchbkg = Instance.new('Frame')
-		searchbkg.Size = UDim2.fromOffset(496, 31)
-		searchbkg.Position = UDim2.fromOffset(142, 80)
-		searchbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-		searchbkg.Parent = window
-		local search = Instance.new('TextBox')
-		search.Size = UDim2.new(1, -10, 0, 31)
-		search.Position = UDim2.fromOffset(10, 0)
-		search.BackgroundTransparency = 1
-		search.Text = ''
-		search.PlaceholderText = ''
-		search.TextXAlignment = Enum.TextXAlignment.Left
-		search.TextColor3 = uipallet.Text
-		search.TextSize = 12
-		search.FontFace = uipallet.Font
-		search.ClearTextOnFocus = false
-		search.Parent = searchbkg
-		local searchcorner = Instance.new('UICorner')
-		searchcorner.CornerRadius = UDim.new(0, 4)
-		searchcorner.Parent = searchbkg
-		local searchicon = Instance.new('ImageLabel')
-		searchicon.Size = UDim2.fromOffset(14, 14)
-		searchicon.Position = UDim2.new(1, -26, 0, 8)
-		searchicon.BackgroundTransparency = 1
-		searchicon.Image = getcustomasset('newvape/assets/new/search.png')
-		searchicon.ImageColor3 = color.Light(uipallet.Main, 0.37)
-		searchicon.Parent = searchbkg
-		local children = Instance.new('ScrollingFrame')
-		children.Name = 'Children'
-		children.Size = UDim2.fromOffset(500, 240)
-		children.Position = UDim2.fromOffset(144, 122)
-		children.BackgroundTransparency = 1
-		children.BorderSizePixel = 0
-		children.ScrollBarThickness = 2
-		children.ScrollBarImageTransparency = 0.75
-		children.CanvasSize = UDim2.new()
-		children.Parent = window
-		local windowlist = Instance.new('UIGridLayout')
-		windowlist.SortOrder = Enum.SortOrder.LayoutOrder
-		windowlist.FillDirectionMaxCells = 9
-		windowlist.CellSize = UDim2.fromOffset(51, 52)
-		windowlist.CellPadding = UDim2.fromOffset(4, 3)
-		windowlist.Parent = children
-		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-			if vape.ThreadFix then
-				setthreadidentity(8)
-			end
-			children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / vape.guiscale.Scale)
-		end)
-		table.insert(vape.Windows, window)
-	
-		local function createitem(id, image)
-			local slotbkg = Instance.new('TextButton')
-			slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-			slotbkg.Text = ''
-			slotbkg.AutoButtonColor = false
-			slotbkg.Parent = children
-			local slotimage = Instance.new('ImageLabel')
-			slotimage.Size = UDim2.fromOffset(32, 32)
-			slotimage.Position = UDim2.new(0.5, -16, 0.5, -16)
-			slotimage.BackgroundTransparency = 1
-			slotimage.Image = image
-			slotimage.Parent = slotbkg
-			local slotcorner = Instance.new('UICorner')
-			slotcorner.CornerRadius = UDim.new(0, 4)
-			slotcorner.Parent = slotbkg
-			slotbkg.MouseEnter:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.04)
-			end)
-			slotbkg.MouseLeave:Connect(function()
-				slotbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-			end)
-			slotbkg.MouseButton1Click:Connect(function()
-				local obj = self.Hotbars[self.Selected]
-				if obj then
-					window['Slot'..selectedslot].ImageLabel.Image = image
-					obj.Hotbar[tostring(selectedslot)] = id
-					obj.Object['Slot'..selectedslot].Image = image
-				end
-			end)
-		end
-	
-		local function indexSearch(text)
-			for _, v in children:GetChildren() do
-				if v:IsA('TextButton') then
-					v:ClearAllChildren()
-					v:Destroy()
-				end
-			end
-	
-			if text == '' then
-				for _, v in {'diamond_sword', 'diamond_pickaxe', 'diamond_axe', 'shears', 'wood_bow', 'wool_white', 'fireball', 'apple', 'iron', 'gold', 'diamond', 'emerald'} do
-					createitem(v, bedwars.ItemMeta[v].image)
-				end
-				return
-			end
-	
-			for i, v in bedwars.ItemMeta do
-				if text:lower() == i:lower():sub(1, text:len()) then
-					if not v.image then continue end
-					createitem(i, v.image)
-				end
-			end
-		end
-	
-		search:GetPropertyChangedSignal('Text'):Connect(function()
-			indexSearch(search.Text)
-		end)
-		indexSearch('')
-	
-		return window
-	end
-	
-	vape.Components.HotbarList = function(optionsettings, children, api)
-		if vape.ThreadFix then
-			setthreadidentity(8)
-		end
-		local optionapi = {
-			Type = 'HotbarList',
-			Hotbars = {},
-			Selected = 1
-		}
-		local hotbarlist = Instance.new('TextButton')
-		hotbarlist.Name = 'HotbarList'
-		hotbarlist.Size = UDim2.fromOffset(220, 40)
-		hotbarlist.BackgroundColor3 = optionsettings.Darker and (children.BackgroundColor3 == color.Dark(uipallet.Main, 0.02) and color.Dark(uipallet.Main, 0.04) or color.Dark(uipallet.Main, 0.02)) or children.BackgroundColor3
-		hotbarlist.Text = ''
-		hotbarlist.BorderSizePixel = 0
-		hotbarlist.AutoButtonColor = false
-		hotbarlist.Parent = children
-		local textbkg = Instance.new('Frame')
-		textbkg.Name = 'BKG'
-		textbkg.Size = UDim2.new(1, -20, 0, 31)
-		textbkg.Position = UDim2.fromOffset(10, 4)
-		textbkg.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-		textbkg.Parent = hotbarlist
-		local textbkgcorner = Instance.new('UICorner')
-		textbkgcorner.CornerRadius = UDim.new(0, 4)
-		textbkgcorner.Parent = textbkg
-		local textbutton = Instance.new('TextButton')
-		textbutton.Name = 'HotbarList'
-		textbutton.Size = UDim2.new(1, -2, 1, -2)
-		textbutton.Position = UDim2.fromOffset(1, 1)
-		textbutton.BackgroundColor3 = uipallet.Main
-		textbutton.Text = ''
-		textbutton.AutoButtonColor = false
-		textbutton.Parent = textbkg
-		textbutton.MouseEnter:Connect(function()
-			tween:Tween(textbkg, TweenInfo.new(0.2), {
-				BackgroundColor3 = color.Light(uipallet.Main, 0.14)
-			})
-		end)
-		textbutton.MouseLeave:Connect(function()
-			tween:Tween(textbkg, TweenInfo.new(0.2), {
-				BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-			})
-		end)
-		local textbuttoncorner = Instance.new('UICorner')
-		textbuttoncorner.CornerRadius = UDim.new(0, 4)
-		textbuttoncorner.Parent = textbutton
-		local textbuttonicon = Instance.new('ImageLabel')
-		textbuttonicon.Size = UDim2.fromOffset(12, 12)
-		textbuttonicon.Position = UDim2.fromScale(0.5, 0.5)
-		textbuttonicon.AnchorPoint = Vector2.new(0.5, 0.5)
-		textbuttonicon.BackgroundTransparency = 1
-		textbuttonicon.Image = getcustomasset('newvape/assets/new/add.png')
-		textbuttonicon.ImageColor3 = Color3.fromHSV(0.46, 0.96, 0.52)
-		textbuttonicon.Parent = textbutton
-		local childrenlist = Instance.new('Frame')
-		childrenlist.Size = UDim2.new(1, 0, 1, -40)
-		childrenlist.Position = UDim2.fromOffset(0, 40)
-		childrenlist.BackgroundTransparency = 1
-		childrenlist.Parent = hotbarlist
-		local windowlist = Instance.new('UIListLayout')
-		windowlist.SortOrder = Enum.SortOrder.LayoutOrder
-		windowlist.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		windowlist.Padding = UDim.new(0, 3)
-		windowlist.Parent = childrenlist
-		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-			if vape.ThreadFix then
-				setthreadidentity(8)
-			end
-			hotbarlist.Size = UDim2.fromOffset(220, math.min(43 + windowlist.AbsoluteContentSize.Y / vape.guiscale.Scale, 603))
-		end)
-		textbutton.MouseButton1Click:Connect(function()
-			optionapi:AddHotbar()
-		end)
-		optionapi.Window = CreateWindow(optionapi)
-	
-		function optionapi:Save(savetab)
-			local hotbars = {}
-			for _, v in self.Hotbars do
-				table.insert(hotbars, v.Hotbar)
-			end
-			savetab.HotbarList = {
-				Selected = self.Selected,
-				Hotbars = hotbars
-			}
-		end
-	
-		function optionapi:Load(savetab)
-			for _, v in self.Hotbars do
-				v.Object:ClearAllChildren()
-				v.Object:Destroy()
-				table.clear(v.Hotbar)
-			end
-			table.clear(self.Hotbars)
-			for _, v in savetab.Hotbars do
-				self:AddHotbar(v)
-			end
-			self.Selected = savetab.Selected or 1
-		end
-	
-		function optionapi:AddHotbar(data)
-			local hotbardata = {Hotbar = data or {}}
-			table.insert(self.Hotbars, hotbardata)
-			local hotbar = Instance.new('TextButton')
-			hotbar.Size = UDim2.fromOffset(200, 27)
-			hotbar.BackgroundColor3 = table.find(self.Hotbars, hotbardata) == self.Selected and color.Light(uipallet.Main, 0.034) or uipallet.Main
-			hotbar.Text = ''
-			hotbar.AutoButtonColor = false
-			hotbar.Parent = childrenlist
-			hotbardata.Object = hotbar
-			local hotbarcorner = Instance.new('UICorner')
-			hotbarcorner.CornerRadius = UDim.new(0, 4)
-			hotbarcorner.Parent = hotbar
-			for i = 1, 9 do
-				local slot = Instance.new('ImageLabel')
-				slot.Name = 'Slot'..i
-				slot.Size = UDim2.fromOffset(17, 18)
-				slot.Position = UDim2.fromOffset(-7 + (i * 18), 5)
-				slot.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
-				slot.Image = hotbardata.Hotbar[tostring(i)] and bedwars.getIcon({itemType = hotbardata.Hotbar[tostring(i)]}, true) or ''
-				slot.BorderSizePixel = 0
-				slot.Parent = hotbar
-			end
-			hotbar.MouseButton1Click:Connect(function()
-				local ind = table.find(optionapi.Hotbars, hotbardata)
-				if ind == optionapi.Selected then
-					vape.gui.ScaledGui.ClickGui.Visible = false
-					optionapi.Window.Visible = true
-					for i = 1, 9 do
-						optionapi.Window['Slot'..i].ImageLabel.Image = hotbardata.Hotbar[tostring(i)] and bedwars.getIcon({itemType = hotbardata.Hotbar[tostring(i)]}, true) or ''
-					end
-				else
-					if optionapi.Hotbars[optionapi.Selected] then
-						optionapi.Hotbars[optionapi.Selected].Object.BackgroundColor3 = uipallet.Main
-					end
-					hotbar.BackgroundColor3 = color.Light(uipallet.Main, 0.034)
-					optionapi.Selected = ind
-				end
-			end)
-			local close = Instance.new('ImageButton')
-			close.Name = 'Close'
-			close.Size = UDim2.fromOffset(16, 16)
-			close.Position = UDim2.new(1, -23, 0, 6)
-			close.BackgroundColor3 = Color3.new(1, 1, 1)
-			close.BackgroundTransparency = 1
-			close.Image = getcustomasset('newvape/assets/new/closemini.png')
-			close.ImageColor3 = color.Light(uipallet.Text, 0.2)
-			close.ImageTransparency = 0.5
-			close.AutoButtonColor = false
-			close.Parent = hotbar
-			local closecorner = Instance.new('UICorner')
-			closecorner.CornerRadius = UDim.new(1, 0)
-			closecorner.Parent = close
-			close.MouseEnter:Connect(function()
-				close.ImageTransparency = 0.3
-				tween:Tween(close, TweenInfo.new(0.2), {
-					BackgroundTransparency = 0.6
-				})
-			end)
-			close.MouseLeave:Connect(function()
-				close.ImageTransparency = 0.5
-				tween:Tween(close, TweenInfo.new(0.2), {
-					BackgroundTransparency = 1
-				})
-			end)
-			close.MouseButton1Click:Connect(function()
-				local ind = table.find(self.Hotbars, hotbardata)
-				local obj = self.Hotbars[self.Selected]
-				local obj2 = self.Hotbars[ind]
-				if obj and obj2 then
-					obj2.Object:ClearAllChildren()
-					obj2.Object:Destroy()
-					table.remove(self.Hotbars, ind)
-					ind = table.find(self.Hotbars, obj)
-					self.Selected = table.find(self.Hotbars, obj) or 1
-				end
-			end)
-		end
-	
-		api.Options.HotbarList = optionapi
-	
-		return optionapi
-	end
-	
-	local function getBlock()
-		local clone = table.clone(store.inventory.inventory.items)
-		table.sort(clone, function(a, b)
-			return a.amount < b.amount
-		end)
-	
-		for _, item in clone do
-			local block = bedwars.ItemMeta[item.itemType].block
-			if block and not block.seeThrough then
-				return item
-			end
-		end
-	end
-	
-	local function getCustomItem(v)
-		if v == 'diamond_sword' then
-			local sword = store.tools.sword
-			v = sword and sword.itemType or 'wood_sword'
-		elseif v == 'diamond_pickaxe' then
-			local pickaxe = store.tools.stone
-			v = pickaxe and pickaxe.itemType or 'wood_pickaxe'
-		elseif v == 'diamond_axe' then
-			local axe = store.tools.wood
-			v = axe and axe.itemType or 'wood_axe'
-		elseif v == 'wood_bow' then
-			local bow = getBow()
-			v = bow and bow.itemType or 'wood_bow'
-		elseif v == 'wool_white' then
-			local block = getBlock()
-			v = block and block.itemType or 'wool_white'
-		end
-	
-		return v
-	end
-	
-	local function findItemInTable(tab, item)
-		for slot, v in tab do
-			if item.itemType == getCustomItem(v) then
-				return tonumber(slot)
-			end
-		end
-	end
-	
-	local function findInHotbar(item)
-		for i, v in store.inventory.hotbar do
-			if v.item and v.item.itemType == item.itemType then
-				return i - 1, v.item
-			end
-		end
-	end
-	
-	local function findInInventory(item)
-		for _, v in store.inventory.inventory.items do
-			if v.itemType == item.itemType then
-				return v
-			end
-		end
-	end
-	
-	local function dispatch(...)
-		bedwars.Store:dispatch(...)
-		vapeEvents.InventoryChanged.Event:Wait()
-	end
-	
-	local function sortCallback()
-		if Active then return end
-		Active = true
-		local items = (List.Hotbars[List.Selected] and List.Hotbars[List.Selected].Hotbar or {})
-	
-		for _, v in store.inventory.inventory.items do
-			local slot = findItemInTable(items, v)
-			if slot then
-				local olditem = store.inventory.hotbar[slot]
-				if olditem.item and olditem.item.itemType == v.itemType then continue end
-				if olditem.item then
-					dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = slot - 1
-					})
-				end
-	
-				local newslot = findInHotbar(v)
-				if newslot then
-					dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = newslot
-					})
-					if olditem.item then
-						dispatch({
-							type = 'InventoryAddToHotbar',
-							item = findInInventory(olditem.item),
-							slot = newslot
-						})
-					end
-				end
-	
-				dispatch({
-					type = 'InventoryAddToHotbar',
-					item = findInInventory(v),
-					slot = slot - 1
-				})
-			elseif Clear.Enabled then
-				local newslot = findInHotbar(v)
-				if newslot then
-				   	dispatch({
-						type = 'InventoryRemoveFromHotbar',
-						slot = newslot
-					})
-				end
-			end
-		end
-	
-		Active = false
-	end
-	
-	AutoHotbar = vape.Categories.Inventory:CreateModule({
-		Name = 'AutoHotbar',
-		Function = function(callback)
-			if callback then
-				task.spawn(sortCallback)
-				if Mode.Value == 'On Key' then
-					AutoHotbar:Toggle()
-					return
-				end
-	
-				AutoHotbar:Clean(vapeEvents.InventoryAmountChanged.Event:Connect(sortCallback))
-			end
-		end,
-		Tooltip = 'Automatically arranges hotbar to your liking.'
-	})
-	Mode = AutoHotbar:CreateDropdown({
-		Name = 'Activation',
-		List = {'Toggle', 'On Key'},
-		Function = function()
-			if AutoHotbar.Enabled then
-				AutoHotbar:Toggle()
-				AutoHotbar:Toggle()
-			end
-		end
-	})
-	Clear = AutoHotbar:CreateToggle({Name = 'Clear Hotbar'})
-	List = AutoHotbar:CreateHotbarList({})
-end)
+
 	
 run(function()
 	local Value
@@ -7007,26 +5067,6 @@ run(function()
 	})
 end)
 	
-run(function()
-	local FastDrop
-	
-	FastDrop = vape.Categories.Inventory:CreateModule({
-		Name = 'FastDrop',
-		Function = function(callback)
-			if callback then
-				repeat
-					if entitylib.isAlive and (not store.inventory.opened) and (inputService:IsKeyDown(Enum.KeyCode.H) or inputService:IsKeyDown(Enum.KeyCode.Backspace)) and inputService:GetFocusedTextBox() == nil then
-						task.spawn(bedwars.ItemDropController.dropItemInHand)
-						task.wait()
-					else
-						task.wait(0.1)
-					end
-				until not FastDrop.Enabled
-			end
-		end,
-		Tooltip = 'Drops items fast when you hold Q'
-	})
-end)
 	
 run(function()
 	local BedPlates
@@ -8538,32 +6578,157 @@ run(function()
 		List = WinEffectName
 	})
 end)
+
 run(function()
-	local old
-	
-	vape.Categories.Blatant:CreateModule({
-		Name = 'lol',
-		Function = function(callback)
-			local modifier = bedwars.SprintController:getMovementStatusModifier()
-			if callback then
-				old = modifier.addModifier
-				modifier.addModifier = function(self, tab)
-					if tab.moveSpeedMultiplier then
-						tab.moveSpeedMultiplier = math.max(tab.moveSpeedMultiplier, 2)
-					end
-					return old(self, tab)
-				end
-	
-				for i in modifier.modifiers do
-					if (i.moveSpeedMultiplier or 1) < 1 then
-						modifier:removeModifier(i)
-					end
-				end
-			else
-				modifier.addModifier = old
-				old = nil
-			end
-		end,
-		Tooltip = 'eddedededededdedededededede'
-	})
-end)	
+    local mod
+
+    mod = vape.Categories.Utility:CreateModule({
+        Name = "ServerHop",
+        Function = function(enabled)
+            if enabled then
+                -- Immediately disable the module so it never stays ON
+                task.spawn(function()
+                    pcall(function() mod.ToggleButton(false) end)
+                    pcall(function() mod:Toggle(false) end)
+                end)
+
+                -- Optional Vape notification
+                pcall(function()
+                    if vape.CreateNotification then
+                        vape.CreateNotification("ServerHop", "Teleporting...", 4)
+                    end
+                end)
+
+                -- Teleport
+                local TeleportService = game:GetService("TeleportService")
+                local tpData
+
+                pcall(function()
+                    tpData = TeleportService:GetLocalPlayerTeleportData()
+                end)
+
+                pcall(function()
+                    TeleportService:Teleport(
+                        game.PlaceId,
+                        game.Players.LocalPlayer,
+                        tpData
+                    )
+                end)
+            end
+        end
+    })
+
+    TPExploit = mod
+end)
+
+run(function()
+    local UserInputService = game:GetService("UserInputService")
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    local infjmp = false
+
+    -- Create Blatant Module
+    local module
+    module = vape.Categories.Blatant:CreateModule({
+        Name = "InfiniteJump",
+        Function = function(state)
+            infjmp = state
+        end
+    })
+
+    -- Jump logic (your code)
+    UserInputService.JumpRequest:Connect(function()
+        if infjmp then
+            local char = LocalPlayer.Character
+            if char then
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid:ChangeState("Jumping")
+                end
+            end
+        end
+    end)
+end)
+
+run(function()
+    local PlayerLevelSet
+    local PlayerLevel = {Value = 100}
+
+    PlayerLevelSet = vape.Categories.Render:CreateModule({
+        Name = "SetPlayerLevel",
+        HoverText = "Sets your player level",
+        Function = function(enabled)
+            if enabled then
+                warningNotification("SetPlayerLevel", "This is client sided (only you will see the new level)", 3)
+                game.Players.LocalPlayer:SetAttribute("PlayerLevel", PlayerLevel.Value)
+            end
+        end
+    })
+
+    PlayerLevel = PlayerLevelSet:CreateSlider({
+        Name = "Player Level",
+        Min = 1,
+        Max = 100,
+        Default = 100,
+        Function = function()
+            if PlayerLevelSet.Enabled then
+                game.Players.LocalPlayer:SetAttribute("PlayerLevel", PlayerLevel.Value)
+            end
+        end
+    })
+end)
+
+
+
+run(function()
+    local BuyBlocksModule
+    local running = false
+
+    BuyBlocksModule = vape.Categories.Inventory:CreateModule({
+        Name = "BuyBlocks",
+        HoverText = "Automatically buys white wool every second",
+        Function = function(enabled)
+            running = enabled
+
+            if enabled then
+                task.spawn(function()
+                    while running do
+                        local args = {
+                            {
+                                shopItem = {
+                                    currency = "iron",
+                                    itemType = "wool_white",
+                                    amount = 16,
+                                    price = 8,
+                                    category = "Blocks"
+                                },
+                                shopId = "2_item_shop_1"
+                            }
+                        }
+
+                        local success = pcall(function()
+                            game:GetService("ReplicatedStorage")
+                            :WaitForChild("rbxts_include")
+                            :WaitForChild("node_modules")
+                            :WaitForChild("@rbxts")
+                            :WaitForChild("net")
+                            :WaitForChild("out")
+                            :WaitForChild("_NetManaged")
+                            :WaitForChild("BedwarsPurchaseItem")
+                            :InvokeServer(unpack(args))
+                        end)
+
+                        -- Notification on success
+                        if success and vape.CreateNotification then
+                            vape.CreateNotification("BuyBlocks", "Purchased 16 Wool", 2)
+                        end
+
+                        task.wait(1)
+                    end
+                end)
+            end
+        end
+    })
+end)
+
