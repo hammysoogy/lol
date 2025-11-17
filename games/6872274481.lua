@@ -5438,6 +5438,8 @@ run(function()
 	})
 end)
 	
+
+
 run(function()
 	local ChestSteal
 	local Range
@@ -8536,4 +8538,32 @@ run(function()
 		List = WinEffectName
 	})
 end)
+run(function()
+	local old
 	
+	vape.Categories.Blatant:CreateModule({
+		Name = 'lol',
+		Function = function(callback)
+			local modifier = bedwars.SprintController:getMovementStatusModifier()
+			if callback then
+				old = modifier.addModifier
+				modifier.addModifier = function(self, tab)
+					if tab.moveSpeedMultiplier then
+						tab.moveSpeedMultiplier = math.max(tab.moveSpeedMultiplier, 2)
+					end
+					return old(self, tab)
+				end
+	
+				for i in modifier.modifiers do
+					if (i.moveSpeedMultiplier or 1) < 1 then
+						modifier:removeModifier(i)
+					end
+				end
+			else
+				modifier.addModifier = old
+				old = nil
+			end
+		end,
+		Tooltip = 'eddedededededdedededededede'
+	})
+end)	
